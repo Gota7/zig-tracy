@@ -77,7 +77,7 @@ pub inline fn initDiscontinuousFrame(comptime name: [:0]const u8) DiscontinuousF
 
 pub inline fn frameImage(image: *anyopaque, width: u16, height: u16, offset: u8, flip: bool) void {
     if (!options.tracy_enable) return;
-    c.___tracy_emit_frame_mark_image(image, width, height, offset, @as(c_int, @intFromBool(flip)));
+    c.___tracy_emit_frame_image(image, width, height, offset, @as(c_int, @intFromBool(flip)));
 }
 
 pub const ZoneOptions = struct {
