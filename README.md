@@ -3,7 +3,7 @@ Easy to use bindings for the tracy client C API.
 
 ## Dependencies
 
-* Zig 0.12.0-dev.1664+8ca4a5240
+* Zig 0.12.0-dev.3437+af0668d6c
 * Tracy 0.10.0 (only for viewing the profiling session, this repository is only concerned with client matters)
 
 ## Features
@@ -27,6 +27,29 @@ In summary:
 * Configure `zig-tracy` dependency in `build.zig`
 * Instrument the code using the provided Zig module
 * Use Tracy UI/server to connect to the instrumented Zig application and explore the profiler data
+
+## Building as a Shared Library
+
+If your project needs to call tracy functions from multiple DLLs, then you need to build the tracy client as a shared library.
+
+This is accomplished by passing the `shared` option, and (if you're using Windows) installing the resulting shared library next to your exe.
+
+```zig
+    const tracy = b.dependency("tracy", .{
+        .target = target,
+        .optimize = optimize,
+        .shared = true,
+    });
+
+    const install_dir = std.Build.Step.InstallArtifact.Options.Dir{ .override = .{ .bin = {} } };
+    const install_tracy = b.addInstallArtifact(tracy.artifact("tracy"), .{
+        .dest_dir = install_dir,
+        .pdb_dir = install_dir,
+    });
+    b.getInstallStep().dependOn(&install_tracy.step);
+```
+
+For additional context, see section 2.1.5 of the Tracy manual, "Setup for multi-DLL projects".
 
 ## Todo / Ideas
 

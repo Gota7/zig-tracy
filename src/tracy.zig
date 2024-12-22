@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const options = @import("tracy-options");
 const c = @cImport({
     if (options.tracy_enable) @cDefine("TRACY_ENABLE", {});
@@ -22,6 +23,7 @@ const c = @cImport({
     if (options.tracy_fibers) @cDefine("TRACY_FIBERS", {});
     if (options.tracy_no_crash_handler) @cDefine("TRACY_NO_CRASH_HANDLER", {});
     if (options.tracy_timer_fallback) @cDefine("TRACY_TIMER_FALLBACK", {});
+    if (options.shared and builtin.os.tag == .windows) @cDefine("TRACY_IMPORTS", {});
 
     @cInclude("tracy/TracyC.h");
 });
@@ -75,7 +77,7 @@ pub inline fn initDiscontinuousFrame(comptime name: [:0]const u8) DiscontinuousF
 
 pub inline fn frameImage(image: *anyopaque, width: u16, height: u16, offset: u8, flip: bool) void {
     if (!options.tracy_enable) return;
-    c.___tracy_emit_frame_mark_image(image, width, height, offset, @as(c_int, @intFromBool(flip)));
+    c.___tracy_emit_frame_image(image, width, height, offset, @as(c_int, @intFromBool(flip)));
 }
 
 pub const ZoneOptions = struct {
@@ -84,7 +86,7 @@ pub const ZoneOptions = struct {
     color: ?u32 = null,
 };
 
-const ZoneContext = extern struct {
+const ZoneContext = if (options.tracy_enable) extern struct {
     ctx: c.___tracy_c_zone_context,
 
     pub inline fn deinit(zone: *const ZoneContext) void {
@@ -111,10 +113,16 @@ const ZoneContext = extern struct {
         if (!options.tracy_enable) return;
         c.___tracy_emit_zone_value(zone.ctx, zone_value);
     }
+} else struct {
+    pub inline fn deinit(_: *const ZoneContext) void {}
+    pub inline fn name(_: *const ZoneContext, _: []const u8) void {}
+    pub inline fn text(_: *const ZoneContext, _: []const u8) void {}
+    pub inline fn color(_: *const ZoneContext, _: u32) void {}
+    pub inline fn value(_: *const ZoneContext, _: u64) void {}
 };
 
 pub inline fn initZone(comptime src: std.builtin.SourceLocation, comptime opts: ZoneOptions) ZoneContext {
-    if (!options.tracy_enable) return .{ .ctx = 0 };
+    if (!options.tracy_enable) return .{};
     const active: c_int = @intFromBool(opts.active);
 
     const static = struct {
