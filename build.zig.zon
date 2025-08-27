@@ -1,10 +1,12 @@
 .{
     .name = .tracy,
-    .version = "0.0.4",
-    .minimum_zig_version = "0.14.0",
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.1",
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "flake.lock",
+        "flake.nix",
         "src",
         "example",
         "README.md",
@@ -12,8 +14,8 @@
     },
     .dependencies = .{
         .tracy_src = .{
-            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.10.tar.gz",
-            .hash = "12202aac930cebaf2b57f443cacc2483478580a72f1316b4f0a720ddd91246fce69d",
+            .url = "git+https://github.com/wolfpld/tracy.git?ref=v0.12.2#c556831ddc6fe26d2fce01c14c97205a9dad46d5",
+            .hash = "N-V-__8AANptPwE8EYOS5w6KRzVyfllpOBthYRcuuQvYhhxb",
         },
     },
     .fingerprint = 0x255a89ee7d8fcfa6,

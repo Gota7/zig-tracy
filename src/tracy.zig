@@ -272,6 +272,7 @@ pub const TracingAllocator = struct {
             .ptr = self,
             .vtable = &.{
                 .alloc = alloc,
+                .remap = remap,
                 .resize = resize,
                 .free = free,
             },
@@ -281,11 +282,11 @@ pub const TracingAllocator = struct {
     fn alloc(
         ctx: *anyopaque,
         len: usize,
-        ptr_align: u8,
+        alignment: std.mem.Alignment,
         ret_addr: usize,
     ) ?[*]u8 {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        const result = self.parent_allocator.rawAlloc(len, ptr_align, ret_addr);
+        const result = self.parent_allocator.rawAlloc(len, alignment, ret_addr);
         if (!options.tracy_enable) return result;
 
         if (self.pool_name) |name| {
@@ -297,25 +298,47 @@ pub const TracingAllocator = struct {
         return result;
     }
 
+    fn remap(
+        ctx: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ret_addr: usize,
+    ) ?[*]u8 {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        const result = self.parent_allocator.rawRemap(memory, alignment, new_len, ret_addr);
+        if (result) |val| {
+            if (self.pool_name) |name| {
+                c.___tracy_emit_memory_free_named(memory.ptr, 0, name.ptr);
+                c.___tracy_emit_memory_alloc_named(val, new_len, 0, name.ptr);
+            } else {
+                c.___tracy_emit_memory_free(memory.ptr, 0);
+                c.___tracy_emit_memory_alloc(val, new_len, 0);
+            }
+            return val;
+        }
+        return null;
+    }
+
     fn resize(
         ctx: *anyopaque,
-        buf: []u8,
-        buf_align: u8,
+        memory: []u8,
+        alignment: std.mem.Alignment,
         new_len: usize,
         ret_addr: usize,
     ) bool {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        const result = self.parent_allocator.rawResize(buf, buf_align, new_len, ret_addr);
+        const result = self.parent_allocator.rawResize(memory, alignment, new_len, ret_addr);
         if (!result) return false;
 
         if (!options.tracy_enable) return true;
 
         if (self.pool_name) |name| {
-            c.___tracy_emit_memory_free_named(buf.ptr, 0, name.ptr);
-            c.___tracy_emit_memory_alloc_named(buf.ptr, new_len, 0, name.ptr);
+            c.___tracy_emit_memory_free_named(memory.ptr, 0, name.ptr);
+            c.___tracy_emit_memory_alloc_named(memory.ptr, new_len, 0, name.ptr);
         } else {
-            c.___tracy_emit_memory_free(buf.ptr, 0);
-            c.___tracy_emit_memory_alloc(buf.ptr, new_len, 0);
+            c.___tracy_emit_memory_free(memory.ptr, 0);
+            c.___tracy_emit_memory_alloc(memory.ptr, new_len, 0);
         }
 
         return true;
@@ -323,21 +346,50 @@ pub const TracingAllocator = struct {
 
     fn free(
         ctx: *anyopaque,
-        buf: []u8,
-        buf_align: u8,
+        memory: []u8,
+        alignment: std.mem.Alignment,
         ret_addr: usize,
     ) void {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
         if (options.tracy_enable) {
             if (self.pool_name) |name| {
-                c.___tracy_emit_memory_free_named(buf.ptr, 0, name.ptr);
+                c.___tracy_emit_memory_free_named(memory.ptr, 0, name.ptr);
             } else {
-                c.___tracy_emit_memory_free(buf.ptr, 0);
+                c.___tracy_emit_memory_free(memory.ptr, 0);
             }
         }
 
-        self.parent_allocator.rawFree(buf, buf_align, ret_addr);
+        self.parent_allocator.rawFree(memory, alignment, ret_addr);
+    }
+};
+
+// TODO: MAKE THIS WORK LIKE AN ACTUAL ARENA!!! ALSO ADD REST OF TRACY FUNCTIONS!!!
+pub const TracingArena = struct {
+    parent_allocator: std.mem.Allocator,
+    arena: *std.heap.ArenaAllocator,
+    arena_traced: *TracingAllocator,
+    allocator: std.mem.Allocator,
+
+    pub fn init(parent_allocator: std.mem.Allocator, comptime name: ?[:0]const u8) !TracingArena {
+        const arena = try parent_allocator.create(std.heap.ArenaAllocator);
+        arena.* = std.heap.ArenaAllocator.init(parent_allocator);
+        const arena_traced = try parent_allocator.create(TracingAllocator);
+        if (name) |val| {
+            arena_traced.* = TracingAllocator.initNamed(val, arena.allocator());
+        } else arena_traced.* = TracingAllocator.init(arena.allocator());
+        return .{
+            .parent_allocator = parent_allocator,
+            .arena = arena,
+            .arena_traced = arena_traced,
+            .allocator = arena_traced.allocator(),
+        };
+    }
+
+    pub fn deinit(self: TracingArena) void {
+        self.parent_allocator.destroy(self.arena_traced);
+        self.arena.deinit();
+        self.parent_allocator.destroy(self.arena);
     }
 };
 
@@ -347,4 +399,8 @@ fn digits2(value: usize) [2]u8 {
         "4041424344454647484950515253545556575859" ++
         "6061626364656667686970717273747576777879" ++
         "8081828384858687888990919293949596979899")[value * 2 ..][0..2].*;
+}
+
+test {
+    std.testing.refAllDeclsRecursive(@This());
 }

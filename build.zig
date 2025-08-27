@@ -62,18 +62,21 @@ pub fn build(b: *std.Build) void {
                 .module = options.createModule(),
             },
         },
+        .target = target,
+        .optimize = optimize,
     });
 
     tracy_module.addIncludePath(tracy_src.path("./public"));
 
-    const tracy_client = if (shared) b.addSharedLibrary(.{
+    const tracy_client = b.addLibrary(.{
         .name = "tracy",
-        .target = target,
-        .optimize = optimize,
-    }) else b.addStaticLibrary(.{
-        .name = "tracy",
-        .target = target,
-        .optimize = optimize,
+        .version = .{ .major = 0, .minor = 12, .patch = 2 },
+        .linkage = if (shared) .dynamic else .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
     });
 
     if (target.result.os.tag == .windows) {
@@ -137,6 +140,16 @@ pub fn build(b: *std.Build) void {
     if (shared and target.result.os.tag == .windows)
         tracy_client.root_module.addCMacro("TRACY_EXPORTS", "");
     b.installArtifact(tracy_client);
+
+    // Creates a step for unit testing. This only builds the test executable
+    // but does not run it.
+    const lib_unit_tests = b.addTest(.{
+        .root_module = tracy_module,
+    });
+    lib_unit_tests.linkLibrary(tracy_client);
+    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_lib_unit_tests.step);
 }
 
 fn digits2(value: usize) [2]u8 {
